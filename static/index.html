@@ -1,381 +1,52 @@
+<!-- static/index.html -->
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <title>Симуляция Магазина</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-        }
-        #storeCanvas {
-            border: 1px solid #000;
-            display: block;
-            margin: 20px auto;
-            background-color: #f0f0f0;
-            position: relative;
-        }
-        #controls {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        #controls input {
-            width: 50px;
-            padding: 5px;
-            margin-right: 10px;
-        }
-        #controls button {
-            padding: 5px 10px;
-        }
-        #stats {
-            text-align: center;
-            margin-top: 10px;
-        }
-        #tooltip {
-            position: absolute;
-            display: none;
-            background: rgba(255, 255, 255, 0.9);
-            border: 1px solid #000;
-            padding: 5px;
-            pointer-events: none;
-            font-size: 12px;
-        }
-    </style>
+    <!-- Фавиконка -->
+    <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+    <!-- Swagger UI CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- Ваш CSS -->
+    <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+<h1>Симуляция Магазина</h1>
 <div id="controls">
     <label>Количество покупателей: <input type="number" id="customerCount" value="10" min="1"></label>
-    <label>Количество товаров:
-        <input type="number" id="milkCount" value="100" min="0"> Молоко,
-        <input type="number" id="vegetablesCount" value="100" min="0"> Овощи,
-        <input type="number" id="meatCount" value="100" min="0"> Мясо,
-        <input type="number" id="breadCount" value="100" min="0"> Хлеб,
-        <input type="number" id="sugarCount" value="100" min="0"> Сахар
-    </label>
+    <br><br>
     <button id="startButton">Старт</button>
+    <button id="accidentButton">Запустить аварии</button>
 </div>
-<canvas id="storeCanvas" width="800" height="600"></canvas>
-<div id="stats">
-    <span>Активных покупателей: <span id="activeCustomers">0</span></span>
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    <span>Покупателей по категориям:
-            <span id="customersByCategory">-</span>
-        </span>
+<div id="mainContainer">
+    <div id="simulationContainer">
+        <!-- Статические элементы магазина -->
+        <img src="/images/exit.png" id="exitIcon" class="icon" style="left:750px; top:550px;" alt="Выход">
+        <!-- Канвас для симуляции -->
+        <canvas id="storeCanvas" width="800" height="600"></canvas>
+        <!-- Подсказка -->
+        <div id="tooltip"></div>
+    </div>
+    <div id="statsContainer">
+        <canvas id="statsCanvas" width="400" height="300"></canvas>
+        <canvas id="goroutineCanvas" width="400" height="300"></canvas>
+        <canvas id="logCanvas" width="400" height="300"></canvas>
+        <div id="stats">
+            <span>Активных покупателей: <span id="activeCustomers">0</span></span>
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+            <span>Покупателей по категориям:
+                    <span id="customersByCategory">-</span>
+                </span>
+        </div>
+    </div>
 </div>
-<div id="tooltip"></div>
-
-<script>
-    let socket;
-    const canvas = document.getElementById('storeCanvas');
-    const ctx = canvas.getContext('2d');
-
-    // Элемент для отображения статистики
-    const activeCustomersElem = document.getElementById('activeCustomers');
-    const customersByCategoryElem = document.getElementById('customersByCategory');
-
-    // Элемент для подсказки
-    const tooltip = document.getElementById('tooltip');
-
-    // Объект для хранения изображений по категориям
-    const categoryIcons = {
-        Milk: new Image(),
-        Vegetables: new Image(),
-        Meat: new Image(),
-        Bread: new Image(),
-        Sugar: new Image(),
-        Unknown: new Image() // Для неизвестных категорий
-    };
-
-    // Загрузка иконок покупателей
-    categoryIcons.Milk.src = 'icons/milk.png';
-    categoryIcons.Vegetables.src = 'icons/vegetables.png';
-    categoryIcons.Meat.src = 'icons/meat.png';
-    categoryIcons.Bread.src = 'icons/bread.png';
-    categoryIcons.Sugar.src = 'icons/sugar.png';
-    categoryIcons.Unknown.src = 'icons/unknown.png'; // Добавь эту иконку для неизвестных категорий
-
-    // Объект для хранения изображений для Aisle и Exit
-    const staticIcons = {
-        Aisle: new Image(),
-        Exit: new Image()
-    };
-
-    // Загрузка иконок Aisle и Exit
-    staticIcons.Aisle.src = 'icons/aisle.png';
-    staticIcons.Exit.src = 'icons/exit.png';
-
-    // Переменная для отслеживания загрузки иконок
-    let iconsLoaded = false;
-
-    // Цвета для категорий
-    const categoryColors = {
-        Milk: 'blue',
-        Vegetables: 'green',
-        Meat: 'red',
-        Bread: 'brown',
-        Sugar: 'yellow',
-        Unknown: 'black'
-    };
-
-    // Функция для проверки загрузки всех иконок
-    function loadIcons(callback) {
-        let loaded = 0;
-        const total = Object.keys(categoryIcons).length + Object.keys(staticIcons).length;
-
-        // Функция для обработки загрузки каждой иконки
-        function iconLoaded(key, success) {
-            if (success) {
-                console.log(`Иконка для ${key} загружена успешно.`);
-            } else {
-                console.error(`Не удалось загрузить иконку для ${key}.`);
-            }
-            loaded++;
-            if (loaded === total) {
-                callback();
-            }
-        }
-
-        // Устанавливаем обработчики загрузки для категорий
-        for (let key in categoryIcons) {
-            categoryIcons[key].onload = () => iconLoaded(key, true);
-            categoryIcons[key].onerror = () => iconLoaded(key, false);
-        }
-
-        // Устанавливаем обработчики загрузки для Aisle и Exit
-        for (let key in staticIcons) {
-            staticIcons[key].onload = () => iconLoaded(key, true);
-            staticIcons[key].onerror = () => iconLoaded(key, false);
-        }
-    }
-
-    // Функция для получения изображения по категории
-    function getIconByCategory(category) {
-        return categoryIcons[category] || categoryIcons.Unknown;
-    }
-
-    // Функция для получения статической иконки
-    function getStaticIcon(name) {
-        return staticIcons[name];
-    }
-
-    // Отключить кнопку "Старт" до загрузки иконок
-    document.getElementById('startButton').disabled = true;
-
-    // Загрузка иконок перед началом работы
-    loadIcons(() => {
-        console.log('Все иконки загружены и готовы к использованию');
-        iconsLoaded = true;
-        // Включить кнопку "Старт"
-        document.getElementById('startButton').disabled = false;
-    });
-
-    document.getElementById('startButton').addEventListener('click', () => {
-        if (!iconsLoaded) {
-            alert('Иконки ещё загружаются. Пожалуйста, подождите.');
-            return;
-        }
-
-        const customerCount = document.getElementById('customerCount').value;
-        const milk = document.getElementById('milkCount').value;
-        const vegetables = document.getElementById('vegetablesCount').value;
-        const meat = document.getElementById('meatCount').value;
-        const bread = document.getElementById('breadCount').value;
-        const sugar = document.getElementById('sugarCount').value;
-
-        // Закрыть существующее соединение, если есть
-        if (socket) {
-            socket.close();
-        }
-
-        // Инициализация WebSocket
-        socket = new WebSocket('ws://localhost:8080/ws');
-
-        socket.onopen = () => {
-            console.log('WebSocket соединение установлено');
-            // Отправить данные на сервер
-            socket.send(JSON.stringify({
-                action: 'start',
-                data: {
-                    customerCount: parseInt(customerCount),
-                    products: {
-                        Milk: parseInt(milk),
-                        Vegetables: parseInt(vegetables),
-                        Meat: parseInt(meat),
-                        Bread: parseInt(bread),
-                        Sugar: parseInt(sugar)
-                    }
-                }
-            }));
-        };
-
-        socket.onmessage = (event) => {
-            console.log('Получено сообщение от сервера:', event.data);
-            try {
-                const customers = JSON.parse(event.data);
-                console.log('Parsed customers:', customers);
-                activeCustomersElem.textContent = customers.length;
-
-                // Подсчёт покупателей по категориям
-                const categoryCounts = {};
-                customers.forEach(customer => {
-                    const category = customer.DesiredProduct.Category;
-                    if (categoryCounts[category]) {
-                        categoryCounts[category]++;
-                    } else {
-                        categoryCounts[category] = 1;
-                    }
-                });
-
-                let categoryStats = '';
-                for (let category in categoryCounts) {
-                    categoryStats += `${category}: ${categoryCounts[category]} `;
-                }
-                customersByCategoryElem.textContent = categoryStats.trim() || '-';
-
-                drawCanvas(customers);
-            } catch (error) {
-                console.error('Ошибка разбора JSON:', error);
-            }
-        };
-
-        socket.onclose = () => {
-            console.log('Соединение закрыто');
-        };
-
-        socket.onerror = (error) => {
-            console.error('Ошибка WebSocket:', error);
-        };
-    });
-
-    function drawCanvas(customers) {
-        // Очистить холст
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Нарисовать маршруты
-        drawRoutes(customers);
-
-        // Нарисовать статические иконки: Aisle и Exit
-        const aisleIcon = getStaticIcon('Aisle');
-        const exitIcon = getStaticIcon('Exit');
-
-        const aisleWidth = 100;
-        const aisleHeight = 100;
-        const exitWidth = 50;
-        const exitHeight = 50;
-
-        // Позиции для Aisle и Exit
-        const aislePosition = { x: 300, y: 100 };
-        const exitPosition = { x: 50, y: 500 };
-
-        // Рисуем Aisle
-        if (aisleIcon.complete && aisleIcon.naturalWidth !== 0) {
-            ctx.drawImage(aisleIcon, aislePosition.x - aisleWidth / 2, aislePosition.y - aisleHeight / 2, aisleWidth, aisleHeight);
-        } else {
-            console.error('Иконка Aisle не загружена.');
-        }
-
-        // Рисуем Exit
-        if (exitIcon.complete && exitIcon.naturalWidth !== 0) {
-            ctx.drawImage(exitIcon, exitPosition.x - exitWidth / 2, exitPosition.y - exitHeight / 2, exitWidth, exitHeight);
-        } else {
-            console.error('Иконка Exit не загружена.');
-        }
-
-        // Нарисовать сетку (опционально для визуализации координат)
-        ctx.strokeStyle = "#e0e0e0";
-        for (let x = 0; x <= canvas.width; x += 50) {
-            ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, canvas.height);
-            ctx.stroke();
-        }
-        for (let y = 0; y <= canvas.height; y += 50) {
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(canvas.width, y);
-            ctx.stroke();
-        }
-
-        // Нарисовать каждого клиента с иконкой и цветовой кодировкой
-        customers.forEach(customer => {
-            const icon = getIconByCategory(customer.DesiredProduct.Category);
-            const iconWidth = 20; // Ширина иконки
-            const iconHeight = 20; // Высота иконки
-
-            if (icon.complete && icon.naturalWidth !== 0) {
-                // Центрирование иконки по координатам
-                const x = customer.CurrentPosition.X - iconWidth / 2;
-                const y = customer.CurrentPosition.Y - iconHeight / 2;
-
-                ctx.drawImage(icon, x, y, iconWidth, iconHeight);
-            } else {
-                console.error(`Иконка для категории ${customer.DesiredProduct.Category} не загружена.`);
-            }
-
-            // Добавление подписи с ID клиента (цветная подпись)
-            ctx.fillStyle = getColorByCategory(customer.DesiredProduct.Category);
-            ctx.font = "12px Arial";
-            ctx.fillText(customer.ID, customer.CurrentPosition.X + iconWidth / 2, customer.CurrentPosition.Y + iconHeight / 2);
-        });
-    }
-
-    // Функция для получения цвета по категории
-    function getColorByCategory(category) {
-        return categoryColors[category] || categoryColors.Unknown;
-    }
-
-    // Функция для рисования маршрутов
-    function drawRoutes(customers) {
-        customers.forEach(customer => {
-            const aislePosition = { x: 300, y: 100 }; // Позиция Aisle
-            const exitPosition = { x: 50, y: 500 };   // Позиция Exit
-
-            ctx.beginPath();
-            ctx.moveTo(aislePosition.x, aislePosition.y);
-            ctx.lineTo(customer.CurrentPosition.X, customer.CurrentPosition.Y);
-            ctx.lineTo(exitPosition.x, exitPosition.y);
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-            ctx.stroke();
-            ctx.closePath();
-        });
-    }
-
-    // Обработчик событий для отображения подсказок
-    canvas.addEventListener('mousemove', function(event) {
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = event.clientX - rect.left;
-        const mouseY = event.clientY - rect.top;
-
-        let hoveredCustomer = null;
-
-        // Проверка, находится ли курсор над каким-либо покупателем
-        customers.forEach(customer => {
-            const x = customer.CurrentPosition.X;
-            const y = customer.CurrentPosition.Y;
-            const iconWidth = 20;
-            const iconHeight = 20;
-
-            if (mouseX >= x - iconWidth / 2 && mouseX <= x + iconWidth / 2 &&
-                mouseY >= y - iconHeight / 2 && mouseY <= y + iconHeight / 2) {
-                hoveredCustomer = customer;
-            }
-        });
-
-        if (hoveredCustomer) {
-            tooltip.style.left = (event.clientX + 10) + 'px';
-            tooltip.style.top = (event.clientY + 10) + 'px';
-            tooltip.innerHTML = `ID: ${hoveredCustomer.ID}<br>Категория: ${hoveredCustomer.DesiredProduct.Category}`;
-            tooltip.style.display = 'block';
-        } else {
-            tooltip.style.display = 'none';
-        }
-    });
-
-    // Скрытие подсказки при уходе курсора с Canvas
-    canvas.addEventListener('mouseleave', function() {
-        tooltip.style.display = 'none';
-    });
-</script>
+<!-- Swagger UI -->
+<div id="swagger-ui"></div>
+<!-- Swagger UI JS без атрибутов integrity -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui-bundle.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui-standalone-preset.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<!-- Ваш скрипт -->
+<script src="/scripts.js"></script>
 </body>
 </html>

@@ -1,34 +1,28 @@
 // models/models.go
 package models
 
-type ProductCategory string
-
-const (
-	Milk       ProductCategory = "Milk"
-	Vegetables ProductCategory = "Vegetables"
-	Meat       ProductCategory = "Meat"
-	Bread      ProductCategory = "Bread"
-	Sugar      ProductCategory = "Sugar"
-	Unknown    ProductCategory = "Unknown"
-)
-
-type Product struct {
-	Category string `json:"Category"`
-	Quantity int    `json:"Quantity"`
-}
-
 type Position struct {
-	X int `json:"X"`
-	Y int `json:"Y"`
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 type DesiredProduct struct {
-	Category ProductCategory `json:"Category"`
+	Category string `json:"category"`
+	// Можно добавить дополнительные поля, если необходимо
 }
 
 type Customer struct {
-	ID              int            `json:"ID"`
-	CurrentPosition Position       `json:"CurrentPosition"`
-	DesiredProduct  DesiredProduct `json:"DesiredProduct"`
-	// Дополнительные поля при необходимости
+	ID              int            `json:"id"`
+	FirstName       string         `json:"first_name"`
+	LastName        string         `json:"last_name"`
+	PurchaseAmount  float64        `json:"purchase_amount"`
+	PurchaseCount   int            `json:"purchase_count"`
+	VisitCount      int            `json:"visit_count"`
+	DesiredProduct  DesiredProduct `json:"desired_product"`
+	CurrentPosition Position       `json:"current_position"`
+}
+
+type Product struct {
+	Category string `json:"category"`
+	Quantity int    `json:"quantity"`
 }
